@@ -1,6 +1,9 @@
-[package]
-name = "handmade_rust"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "projs/handmade_rust",
+    "projs/win32"
+]
 
-[dependencies]
+default-members = [
+    "projs/handmade_rust"
+]

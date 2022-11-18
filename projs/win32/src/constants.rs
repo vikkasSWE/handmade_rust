@@ -1,0 +1,2 @@
+pub const MB_OK: u32 = 0x00000000;
+pub const MB_ICONINFORMATION: u32 = 0x00000040;
