@@ -85,4 +85,75 @@ pub struct tagRECT {
     pub bottom: LONG,
 }
 
+impl Default for tagRECT {
+    fn default() -> Self {
+        Self {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        }
+    }
+}
+
 pub type RECT = tagRECT;
+pub type LPRECT = *mut tagRECT;
+
+#[repr(C)]
+pub struct tagBITMAPINFO {
+    pub bmiHeader: BITMAPINFOHEADER,
+    pub bmiColors: [RGBQUAD; 1],
+}
+
+impl Default for tagBITMAPINFO {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+pub type BITMAPINFO = tagBITMAPINFO;
+
+#[repr(C)]
+pub struct tagRGBQUAD {
+    pub rgbBlue: BYTE,
+    pub rgbGreen: BYTE,
+    pub rgbRed: BYTE,
+    pub rgbReserved: BYTE,
+}
+
+impl Default for tagRGBQUAD {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+pub type RGBQUAD = tagRGBQUAD;
+
+#[repr(C)]
+pub struct tagBITMAPINFOHEADER {
+    pub biSize: DWORD,
+    pub biWidth: LONG,
+    pub biHeight: LONG,
+    pub biPlanes: WORD,
+    pub biBitCount: WORD,
+    pub biCompression: DWORD,
+    pub biSizeImage: DWORD,
+    pub biXPelsPerMeter: LONG,
+    pub biYPelsPerMeter: LONG,
+    pub biClrUsed: DWORD,
+    pub biClrImportant: DWORD,
+}
+
+impl Default for tagBITMAPINFOHEADER {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+pub type BITMAPINFOHEADER = tagBITMAPINFOHEADER;

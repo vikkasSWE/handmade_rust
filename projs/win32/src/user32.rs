@@ -32,4 +32,6 @@ extern "system" {
     pub fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) -> BOOL;
 
     pub fn DefWindowProcW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT;
+
+    pub fn GetClientRect(hWnd: HWND, lpRect: LPRECT) -> BOOL;
 }

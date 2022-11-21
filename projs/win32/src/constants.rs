@@ -27,3 +27,7 @@ pub const WM_SIZE: u32 = 0x0005;
 
 pub const BLACKNESS: DWORD = 0x00000042;
 pub const WHITENESS: DWORD = 0x00FF0062;
+
+pub const DIB_RGB_COLORS: u32 = 0;
+pub const SRCCOPY: DWORD = 0x00CC0020;
+pub const BI_RGB: LONG = 0;
