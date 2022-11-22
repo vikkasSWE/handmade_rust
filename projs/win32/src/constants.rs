@@ -31,3 +31,10 @@ pub const WHITENESS: DWORD = 0x00FF0062;
 pub const DIB_RGB_COLORS: u32 = 0;
 pub const SRCCOPY: DWORD = 0x00CC0020;
 pub const BI_RGB: LONG = 0;
+
+pub const WM_QUIT: u32 = 0x0012;
+pub const PM_REMOVE: u32 = 0x0001;
+
+pub const MEM_COMMIT: u32 = 0x00001000;
+pub const PAGE_READWRITE: u32 = 0x04;
+pub const MEM_RELEASE: u32 = 0x00008000;
