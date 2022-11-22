@@ -29,52 +29,74 @@ static mut BITMAP_INFO: BITMAPINFO = BITMAPINFO {
     }; 1],
 };
 static mut BITMAP_MEMORY: *mut c_void = null_mut();
-static mut BITMAP_HANDLE: HBITMAP = null_mut();
-static mut BITMAP_DEVICE_CONTEXT: HDC = null_mut();
+static mut BITMAP_WIDTH: i32 = 0;
+static mut BITMAP_HEIGHT: i32 = 0;
+static mut BYTES_PER_PIXEL: i32 = 4;
+
+unsafe fn render_weird_gradient(blue_offset: i32, green_offset: i32) {
+    let width = BITMAP_WIDTH;
+    let _height = BITMAP_HEIGHT;
+
+    let pitch = width * BYTES_PER_PIXEL;
+    let mut row = BITMAP_MEMORY as *mut u8;
+    for y in 0..BITMAP_HEIGHT {
+        let mut pixel = row as *mut u32;
+        for x in 0..BITMAP_WIDTH {
+            let blue = x + blue_offset;
+            let green = y + green_offset;
+
+            *pixel = (green << 8 | blue) as u32;
+            pixel = pixel.wrapping_add(1);
+        }
+        row = row.wrapping_add(pitch as usize);
+    }
+}
 
 unsafe fn win32_resize_dib_section(width: i32, height: i32) {
-    if !BITMAP_HANDLE.is_null() {
-        DeleteObject(BITMAP_HANDLE);
+    if !BITMAP_MEMORY.is_null() {
+        VirtualFree(BITMAP_MEMORY, 0, MEM_RELEASE);
     }
 
-    if BITMAP_DEVICE_CONTEXT.is_null() {
-        BITMAP_DEVICE_CONTEXT = CreateCompatibleDC(null_mut());
-    }
+    BITMAP_WIDTH = width;
+    BITMAP_HEIGHT = height;
 
     BITMAP_INFO.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    BITMAP_INFO.bmiHeader.biWidth = width;
-    BITMAP_INFO.bmiHeader.biHeight = height;
+    BITMAP_INFO.bmiHeader.biWidth = BITMAP_WIDTH;
+    BITMAP_INFO.bmiHeader.biHeight = BITMAP_HEIGHT;
     BITMAP_INFO.bmiHeader.biPlanes = 1;
     BITMAP_INFO.bmiHeader.biBitCount = 32;
     BITMAP_INFO.bmiHeader.biCompression = BI_RGB as u32;
 
-    BITMAP_HANDLE = CreateDIBSection(
-        BITMAP_DEVICE_CONTEXT,
-        &BITMAP_INFO,
-        DIB_RGB_COLORS,
-        &mut BITMAP_MEMORY,
+    let bitmap_memory_size = (BITMAP_WIDTH * BITMAP_HEIGHT) * BYTES_PER_PIXEL;
+    BITMAP_MEMORY = VirtualAlloc(
         null_mut(),
-        0,
+        bitmap_memory_size as usize,
+        MEM_COMMIT,
+        PAGE_READWRITE,
     );
 }
 
 unsafe fn win32_update_window(
     device_context: *mut c_void,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
+    client_rect: &RECT,
+    _x: i32,
+    _y: i32,
+    _width: i32,
+    _height: i32,
 ) {
+    let window_width = client_rect.right - client_rect.left;
+    let window_height = client_rect.bottom - client_rect.top;
+
     StretchDIBits(
         device_context,
-        x,
-        y,
-        width,
-        height,
-        x,
-        y,
-        width,
-        height,
+        0,
+        0,
+        BITMAP_WIDTH,
+        BITMAP_HEIGHT,
+        0,
+        0,
+        window_width,
+        window_height,
         BITMAP_MEMORY,
         &BITMAP_INFO,
         DIB_RGB_COLORS,
@@ -119,7 +141,10 @@ pub unsafe extern "system" fn win32_main_window_callback(
             let width = paint.rcPaint.right - paint.rcPaint.left;
             let height = paint.rcPaint.bottom - paint.rcPaint.top;
 
-            win32_update_window(device_context, x, y, width, height);
+            let mut client_rect = RECT::default();
+            GetClientRect(window, &mut client_rect);
+
+            win32_update_window(device_context, &client_rect, x, y, width, height);
             EndPaint(window, &mut paint);
         }
         _ => {
@@ -146,7 +171,7 @@ fn main() {
 
     if unsafe { RegisterClassW(&window_class) } != 0 {
         let lparam: *mut i32 = Box::leak(Box::new(5_i32));
-        let window_handle = unsafe {
+        let window = unsafe {
             CreateWindowExW(
                 0,
                 window_class.lpszClassName,
@@ -163,18 +188,48 @@ fn main() {
             )
         };
 
-        if !window_handle.is_null() {
+        if !window.is_null() {
+            let mut x_offset = 0;
+            let mut y_offset = 0;
+
             'main_loop: loop {
                 let mut message = MSG::default();
-                let message_result = unsafe { GetMessageW(&mut message, null_mut(), 0, 0) };
-                if message_result > 0 {
+
+                while unsafe { PeekMessageW(&mut message, null_mut(), 0, 0, PM_REMOVE) } > 0 {
                     unsafe {
+                        if message.message == WM_QUIT {
+                            RUNNING = false;
+                        }
+
                         TranslateMessage(&message);
                         DispatchMessageW(&message);
                     }
-                } else {
-                    break;
                 }
+
+                unsafe { render_weird_gradient(x_offset, y_offset) };
+
+                let device_context = unsafe { GetDC(window) };
+
+                let mut client_rect = RECT::default();
+                unsafe { GetClientRect(window, &mut client_rect) };
+                let window_width = client_rect.right - client_rect.left;
+                let window_height = client_rect.bottom - client_rect.top;
+
+                unsafe {
+                    win32_update_window(
+                        device_context,
+                        &client_rect,
+                        0,
+                        0,
+                        window_width,
+                        window_height,
+                    )
+                };
+
+                unsafe { ReleaseDC(window, device_context) };
+
+                x_offset += 1;
+                y_offset += 2;
 
                 if unsafe { RUNNING } == false {
                     break 'main_loop;

@@ -34,4 +34,16 @@ extern "system" {
     pub fn DefWindowProcW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT;
 
     pub fn GetClientRect(hWnd: HWND, lpRect: LPRECT) -> BOOL;
+
+    pub fn GetDC(hWnd: HWND) -> HDC;
+
+    pub fn ReleaseDC(hWnd: HWND, hDC: HDC) -> INT;
+
+    pub fn PeekMessageW(
+        lpMsg: LPMSG,
+        hWnd: HWND,
+        wMsgFilterMin: UINT,
+        wMsgFilterMax: UINT,
+        wRemoveMsg: UINT,
+    ) -> BOOL;
 }
