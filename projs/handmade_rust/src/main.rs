@@ -1,5 +1,5 @@
 use std::{
-    ffi::c_void,
+    ffi::{c_void, CString},
     ptr::{null, null_mut},
 };
 
@@ -54,6 +54,31 @@ struct Win32OffscreenBuffer {
 struct Win32WindowDimensions {
     width: i32,
     height: i32,
+}
+
+type XInputGetStateFn = extern "system" fn(DWORD, *mut XINPUT_STATE) -> DWORD;
+extern "system" fn x_input_get_state_stub(_: DWORD, _: *mut XINPUT_STATE) -> DWORD {
+    ERROR_DEVICE_NOT_CONNECTED as DWORD
+}
+static mut XINPUT_GET_STATE: XInputGetStateFn = x_input_get_state_stub;
+
+type XInputSetState = extern "system" fn(DWORD, XINPUT_VIBRATION) -> DWORD;
+extern "system" fn x_input_set_state_stub(_: DWORD, _: XINPUT_VIBRATION) -> DWORD {
+    ERROR_DEVICE_NOT_CONNECTED as DWORD
+}
+static mut XINPUT_SET_STATE: XInputSetState = x_input_set_state_stub;
+
+unsafe fn win32_load_x_input() {
+    let x_input_library = LoadLibraryW(wide_null("xinput9_1_0.dll").as_ptr());
+    if x_input_library != 0 as HINSTANCE {
+        let x_input_get_state = CString::new("XInputGetState").unwrap();
+        XINPUT_GET_STATE =
+            std::mem::transmute(GetProcAddress(x_input_library, x_input_get_state.as_ptr()));
+
+        let x_input_set_state = CString::new("XInputSetState").unwrap();
+        XINPUT_SET_STATE =
+            std::mem::transmute(GetProcAddress(x_input_library, x_input_set_state.as_ptr()));
+    }
 }
 
 fn win32_get_window_dimension(window: HWND) -> Win32WindowDimensions {
@@ -154,6 +179,62 @@ pub unsafe extern "system" fn win32_main_window_callback(
         WM_DESTROY => {
             GLOBAL_RUNNING = false;
         }
+        WM_SYSKEYDOWN | WM_SYSKEYUP | WM_KEYDOWN | WM_KEYUP => {
+            let keycode = wparam as u32;
+            let was_down = (lparam & (1 << 30)) != 0;
+            let is_down = (lparam & (1 << 31)) == 0;
+
+            if was_down != is_down {
+                match keycode as u8 as char {
+                    'W' => {
+                        println!("W");
+                    }
+                    'A' => {
+                        println!("A");
+                    }
+                    'S' => {
+                        println!("S");
+                    }
+                    'D' => {
+                        println!("D");
+                    }
+                    'E' => {
+                        println!("E");
+                    }
+                    'Q' => {
+                        println!("Q");
+                    }
+                    _ => {}
+                }
+
+                match keycode {
+                    VK_UP => {
+                        println!("VK_UP");
+                    }
+                    VK_LEFT => {
+                        println!("VK_LEFT");
+                    }
+                    VK_DOWN => {
+                        println!("VK_DOWN");
+                    }
+                    VK_RIGHT => {
+                        println!("VK_RIGHT");
+                    }
+                    VK_ESCAPE => {
+                        print!("ESCAPE:");
+                        if is_down {
+                            println!("Is Down!");
+                        } else if was_down {
+                            println!("Was Down!");
+                        }
+                    }
+                    VK_SPACE => {
+                        println!("VK_SPACE");
+                    }
+                    _ => {}
+                }
+            }
+        }
         WM_PAINT => {
             let mut paint = PAINTSTRUCT::default();
             let device_context = BeginPaint(window, &mut paint);
@@ -176,8 +257,10 @@ pub unsafe extern "system" fn win32_main_window_callback(
 }
 
 fn main() {
-    let h_instance = unsafe { GetModuleHandleW(null()) };
+    unsafe { win32_load_x_input() };
     unsafe { win32_resize_dib_section(&mut GLOBAL_BACKBUFFER, 1280, 720) };
+
+    let h_instance = unsafe { GetModuleHandleW(null()) };
 
     let window_class_name_null = wide_null("HandmadeHeroWindowClass");
     let window_class = WNDCLASSW {
@@ -227,7 +310,43 @@ fn main() {
                     }
                 }
 
-                unsafe { render_weird_gradient(&GLOBAL_BACKBUFFER, x_offset, y_offset) };
+                for controller_index in 0..XUSER_MAX_COUNT {
+                    let mut controller_state = XINPUT_STATE::default();
+                    if unsafe { XINPUT_GET_STATE(controller_index, &mut controller_state) }
+                        == ERROR_SUCCESS as u32
+                    {
+                        let pad = &controller_state.Gamepad;
+
+                        #[allow(unused)]
+                        {
+                            let up = pad.wButtons & XINPUT_GAMEPAD_DPAD_UP as u16;
+                            let down = pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN as u16;
+                            let left = pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT as u16;
+                            let right = pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT as u16;
+                            let start = pad.wButtons & XINPUT_GAMEPAD_START as u16;
+                            let back = pad.wButtons & XINPUT_GAMEPAD_BACK as u16;
+                            let left_shoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER as u16;
+                            let right_shoulder =
+                                pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER as u16;
+                            let a_button = pad.wButtons & XINPUT_GAMEPAD_A as u16;
+                            let b_button = pad.wButtons & XINPUT_GAMEPAD_B as u16;
+                            let x_button = pad.wButtons & XINPUT_GAMEPAD_X as u16;
+                            let y_button = pad.wButtons & XINPUT_GAMEPAD_Y as u16;
+                        }
+
+                        let stick_x = pad.sThumbLX;
+                        let stick_y = pad.sThumbLY;
+
+                        x_offset += stick_x >> 12;
+                        y_offset += stick_y >> 12;
+                    } else {
+                        // controller not availible
+                    }
+                }
+
+                unsafe {
+                    render_weird_gradient(&GLOBAL_BACKBUFFER, x_offset as i32, y_offset as i32)
+                };
 
                 let dimension = win32_get_window_dimension(window);
                 unsafe {

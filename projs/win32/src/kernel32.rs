@@ -18,4 +18,10 @@ extern "system" {
     ) -> LPVOID;
 
     pub fn VirtualFree(lpAddress: LPVOID, dwSize: SIZE_T, dwFreeType: DWORD) -> BOOL;
+
+    pub fn LoadLibraryA(lpLibFileName: LPCSTR) -> HMODULE;
+
+    pub fn LoadLibraryW(lpLibFileName: LPCWSTR) -> HMODULE;
+
+    pub fn GetProcAddress(hModule: HMODULE, lpProcName: LPCSTR) -> FARPROC;
 }
