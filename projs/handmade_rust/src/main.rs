@@ -5,100 +5,132 @@ use std::{
 
 use win32::*;
 
-static mut RUNNING: bool = true;
+static mut GLOBAL_RUNNING: bool = true;
+static mut GLOBAL_BACKBUFFER: Win32OffscreenBuffer = {
+    let info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: 0,
+            biWidth: 0,
+            biHeight: 0,
+            biPlanes: 0,
+            biBitCount: 0,
+            biCompression: 0,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        },
+        bmiColors: [RGBQUAD {
+            rgbBlue: 0,
+            rgbGreen: 0,
+            rgbRed: 0,
+            rgbReserved: 0,
+        }; 1],
+    };
 
-static mut BITMAP_INFO: BITMAPINFO = BITMAPINFO {
-    bmiHeader: BITMAPINFOHEADER {
-        biSize: 0,
-        biWidth: 0,
-        biHeight: 0,
-        biPlanes: 0,
-        biBitCount: 0,
-        biCompression: 0,
-        biSizeImage: 0,
-        biXPelsPerMeter: 0,
-        biYPelsPerMeter: 0,
-        biClrUsed: 0,
-        biClrImportant: 0,
-    },
-    bmiColors: [RGBQUAD {
-        rgbBlue: 0,
-        rgbGreen: 0,
-        rgbRed: 0,
-        rgbReserved: 0,
-    }; 1],
+    let memory = null_mut();
+    let width = 0;
+    let height = 0;
+    let pitch = 0;
+
+    Win32OffscreenBuffer {
+        info,
+        memory,
+        width,
+        height,
+        pitch,
+    }
 };
-static mut BITMAP_MEMORY: *mut c_void = null_mut();
-static mut BITMAP_WIDTH: i32 = 0;
-static mut BITMAP_HEIGHT: i32 = 0;
-static mut BYTES_PER_PIXEL: i32 = 4;
 
-unsafe fn render_weird_gradient(blue_offset: i32, green_offset: i32) {
-    let width = BITMAP_WIDTH;
-    let _height = BITMAP_HEIGHT;
+struct Win32OffscreenBuffer {
+    info: BITMAPINFO,
+    memory: *mut c_void,
+    width: i32,
+    height: i32,
+    pitch: i32,
+}
 
-    let pitch = width * BYTES_PER_PIXEL;
-    let mut row = BITMAP_MEMORY as *mut u8;
-    for y in 0..BITMAP_HEIGHT {
+struct Win32WindowDimensions {
+    width: i32,
+    height: i32,
+}
+
+fn win32_get_window_dimension(window: HWND) -> Win32WindowDimensions {
+    let mut client_rect = RECT::default();
+
+    unsafe { GetClientRect(window, &mut client_rect) };
+
+    Win32WindowDimensions {
+        width: client_rect.right - client_rect.left,
+        height: client_rect.bottom - client_rect.top,
+    }
+}
+
+unsafe fn render_weird_gradient(
+    buffer: &Win32OffscreenBuffer,
+    blue_offset: i32,
+    green_offset: i32,
+) {
+    let mut row = buffer.memory as *mut u8;
+    for y in 0..buffer.height {
         let mut pixel = row as *mut u32;
-        for x in 0..BITMAP_WIDTH {
+        for x in 0..buffer.width {
             let blue = x + blue_offset;
             let green = y + green_offset;
 
             *pixel = (green << 8 | blue) as u32;
             pixel = pixel.wrapping_add(1);
         }
-        row = row.wrapping_add(pitch as usize);
+        row = row.wrapping_add(buffer.pitch as usize);
     }
 }
 
-unsafe fn win32_resize_dib_section(width: i32, height: i32) {
-    if !BITMAP_MEMORY.is_null() {
-        VirtualFree(BITMAP_MEMORY, 0, MEM_RELEASE);
+unsafe fn win32_resize_dib_section(buffer: &mut Win32OffscreenBuffer, width: i32, height: i32) {
+    if !buffer.memory.is_null() {
+        VirtualFree(buffer.memory, 0, MEM_RELEASE);
     }
 
-    BITMAP_WIDTH = width;
-    BITMAP_HEIGHT = height;
+    buffer.width = width;
+    buffer.height = height;
 
-    BITMAP_INFO.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    BITMAP_INFO.bmiHeader.biWidth = BITMAP_WIDTH;
-    BITMAP_INFO.bmiHeader.biHeight = BITMAP_HEIGHT;
-    BITMAP_INFO.bmiHeader.biPlanes = 1;
-    BITMAP_INFO.bmiHeader.biBitCount = 32;
-    BITMAP_INFO.bmiHeader.biCompression = BI_RGB as u32;
+    let bytes_per_pixel = 4;
 
-    let bitmap_memory_size = (BITMAP_WIDTH * BITMAP_HEIGHT) * BYTES_PER_PIXEL;
-    BITMAP_MEMORY = VirtualAlloc(
+    buffer.info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    buffer.info.bmiHeader.biWidth = buffer.width;
+    buffer.info.bmiHeader.biHeight = -buffer.height;
+    buffer.info.bmiHeader.biPlanes = 1;
+    buffer.info.bmiHeader.biBitCount = 32;
+    buffer.info.bmiHeader.biCompression = BI_RGB as u32;
+
+    let bitmap_memory_size = (buffer.width * buffer.height) * bytes_per_pixel;
+    buffer.memory = VirtualAlloc(
         null_mut(),
         bitmap_memory_size as usize,
         MEM_COMMIT,
         PAGE_READWRITE,
     );
+    buffer.pitch = width * bytes_per_pixel;
 }
 
-unsafe fn win32_update_window(
+unsafe fn win32_display_buffer_in_window(
     device_context: *mut c_void,
-    client_rect: &RECT,
-    _x: i32,
-    _y: i32,
-    _width: i32,
-    _height: i32,
+    window_width: i32,
+    window_height: i32,
+    buffer: &Win32OffscreenBuffer,
 ) {
-    let window_width = client_rect.right - client_rect.left;
-    let window_height = client_rect.bottom - client_rect.top;
-
     StretchDIBits(
         device_context,
         0,
         0,
-        BITMAP_WIDTH,
-        BITMAP_HEIGHT,
-        0,
-        0,
         window_width,
         window_height,
-        BITMAP_MEMORY,
-        &BITMAP_INFO,
+        0,
+        0,
+        buffer.width,
+        buffer.height,
+        buffer.memory,
+        &buffer.info,
         DIB_RGB_COLORS,
         SRCCOPY,
     );
@@ -113,38 +145,26 @@ pub unsafe extern "system" fn win32_main_window_callback(
     let mut result = 0;
 
     match message {
-        WM_SIZE => {
-            println!("WM_SIZE");
-            let mut client_rect = RECT::default();
-            GetClientRect(window, &mut client_rect);
-            let width = client_rect.right - client_rect.left;
-            let height = client_rect.bottom - client_rect.top;
-            win32_resize_dib_section(width, height);
-        }
         WM_CLOSE => {
-            println!("WM_CLOSE");
-            RUNNING = false;
+            GLOBAL_RUNNING = false;
         }
         WM_ACTIVATEAPP => {
             println!("WM_ACTIVATEAPP");
         }
         WM_DESTROY => {
-            println!("WM_DESTROY");
-            RUNNING = false;
+            GLOBAL_RUNNING = false;
         }
         WM_PAINT => {
-            println!("WM_PAINT");
             let mut paint = PAINTSTRUCT::default();
             let device_context = BeginPaint(window, &mut paint);
-            let x = paint.rcPaint.left;
-            let y = paint.rcPaint.top;
-            let width = paint.rcPaint.right - paint.rcPaint.left;
-            let height = paint.rcPaint.bottom - paint.rcPaint.top;
 
-            let mut client_rect = RECT::default();
-            GetClientRect(window, &mut client_rect);
-
-            win32_update_window(device_context, &client_rect, x, y, width, height);
+            let dimension = win32_get_window_dimension(window);
+            win32_display_buffer_in_window(
+                device_context,
+                dimension.width,
+                dimension.height,
+                &GLOBAL_BACKBUFFER,
+            );
             EndPaint(window, &mut paint);
         }
         _ => {
@@ -157,20 +177,19 @@ pub unsafe extern "system" fn win32_main_window_callback(
 
 fn main() {
     let h_instance = unsafe { GetModuleHandleW(null()) };
-    let window_class_name_null = wide_null("HandmadeHeroWindowClass");
+    unsafe { win32_resize_dib_section(&mut GLOBAL_BACKBUFFER, 1280, 720) };
 
+    let window_class_name_null = wide_null("HandmadeHeroWindowClass");
     let window_class = WNDCLASSW {
         lpfnWndProc: Some(win32_main_window_callback),
         hInstance: h_instance,
         lpszClassName: window_class_name_null.as_ptr(),
-        // style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
+        style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
         ..Default::default()
     };
 
-    let window_name_null = wide_null("Handmade Hero");
-
     if unsafe { RegisterClassW(&window_class) } != 0 {
-        let lparam: *mut i32 = Box::leak(Box::new(5_i32));
+        let window_name_null = wide_null("Handmade Hero");
         let window = unsafe {
             CreateWindowExW(
                 0,
@@ -179,16 +198,18 @@ fn main() {
                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
+                1480,
+                920,
                 null_mut(),
                 null_mut(),
                 h_instance,
-                lparam.cast(),
+                null_mut(),
             )
         };
 
         if !window.is_null() {
+            let device_context = unsafe { GetDC(window) };
+
             let mut x_offset = 0;
             let mut y_offset = 0;
 
@@ -198,7 +219,7 @@ fn main() {
                 while unsafe { PeekMessageW(&mut message, null_mut(), 0, 0, PM_REMOVE) } > 0 {
                     unsafe {
                         if message.message == WM_QUIT {
-                            RUNNING = false;
+                            GLOBAL_RUNNING = false;
                         }
 
                         TranslateMessage(&message);
@@ -206,32 +227,22 @@ fn main() {
                     }
                 }
 
-                unsafe { render_weird_gradient(x_offset, y_offset) };
+                unsafe { render_weird_gradient(&GLOBAL_BACKBUFFER, x_offset, y_offset) };
 
-                let device_context = unsafe { GetDC(window) };
-
-                let mut client_rect = RECT::default();
-                unsafe { GetClientRect(window, &mut client_rect) };
-                let window_width = client_rect.right - client_rect.left;
-                let window_height = client_rect.bottom - client_rect.top;
-
+                let dimension = win32_get_window_dimension(window);
                 unsafe {
-                    win32_update_window(
+                    win32_display_buffer_in_window(
                         device_context,
-                        &client_rect,
-                        0,
-                        0,
-                        window_width,
-                        window_height,
+                        dimension.width,
+                        dimension.height,
+                        &GLOBAL_BACKBUFFER,
                     )
                 };
-
-                unsafe { ReleaseDC(window, device_context) };
 
                 x_offset += 1;
                 y_offset += 2;
 
-                if unsafe { RUNNING } == false {
+                if unsafe { GLOBAL_RUNNING } == false {
                     break 'main_loop;
                 }
             }
