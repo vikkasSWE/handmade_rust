@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
 
 use crate::types::*;
 
@@ -157,3 +158,48 @@ impl Default for tagBITMAPINFOHEADER {
 }
 
 pub type BITMAPINFOHEADER = tagBITMAPINFOHEADER;
+
+#[repr(C)]
+pub struct _XINPUT_STATE {
+    pub dwPacketNumber: DWORD,
+    pub Gamepad: XINPUT_GAMEPAD,
+}
+
+pub type XINPUT_STATE = _XINPUT_STATE;
+
+impl Default for _XINPUT_STATE {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
+pub struct _XINPUT_GAMEPAD {
+    pub wButtons: WORD,
+    pub bLeftTrigger: BYTE,
+    pub bRightTrigger: BYTE,
+    pub sThumbLX: SHORT,
+    pub sThumbLY: SHORT,
+    pub sThumbRX: SHORT,
+    pub sThumbRY: SHORT,
+}
+
+pub type XINPUT_GAMEPAD = _XINPUT_GAMEPAD;
+
+impl Default for _XINPUT_GAMEPAD {
+    #[inline]
+    #[must_use]
+    fn default() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[repr(C)]
+pub struct _XINPUT_VIBRATION {
+    pub wLeftMotorSpeed: WORD,
+    pub wRightMotorSpeed: WORD,
+}
+
+pub type XINPUT_VIBRATION = _XINPUT_VIBRATION;
